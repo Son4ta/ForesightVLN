@@ -1,0 +1,113 @@
+# ===============================================
+#              >>> ai2thor <<<
+# ===============================================
+environment: "ai2thor" # <--- 关键修改
+dataset:
+  name: "procthor-10k" # 数据集名称，用于 prior 库
+  split: "train"       # 使用 'train', 'val', 或 'test'
+# AI2-THOR 特定的尺寸和视场角
+env_frame_width: 480
+env_frame_height: 640
+hfov: 60
+# --- Simulator Settings ---
+# 这些参数对于初始化模拟器至关重要
+
+# 智能体移动的步长（米）
+grid_size: 0.25
+# 碰撞阈值
+collision_threshold: 0.25
+
+# 智能体的可见距离（米）
+visibility_distance: 15
+
+# 旋转角度
+rotation_degrees: 15
+
+# 相机高度 (米)，即使 AI2-THOR 不直接在初始化时使用，项目的其他部分（如地图构建）也可能需要
+camera_height: 0.9009993672370911
+
+seed: 1
+total_num_scenes: 10 # 修改成 ProcTHOR 场景数量
+# --- Debug Settings ---
+# 是否保存调试图像的开关 (True 或 False)
+save_debug_images: False
+# 调试图像的保存路径
+debug_save_dir: "debug_output"
+
+min_depth: 0.2
+max_depth: 3
+# ===============================================
+#              >>> ai2thor end <<<
+# ===============================================
+
+
+num_processes: 1
+num_eval_episodes: 1000
+cuda: true
+sim_gpu_id: 1
+log_interval: 10
+save_interval: 1
+dump_location: "./outputs/experiments/"
+experiment_id: "experiment_0"
+save_periodic: 50000
+visualize: 1
+frame_width: 120
+frame_height: 160
+max_episode_length: 1000
+task_config: "tasks/instance_imagenav.yaml"
+text_goal_dataset: "data/datasets/textnav/val/val_text.json.gz"
+split: "val"
+camera_height: 0.9 #0.88
+turn_angle: 30
+
+success_dist: 1.0
+floor_thr: 50
+min_d: 1.5
+max_d: 100.0
+version: "v3"
+lr: 2.5e-5
+global_hidden_size: 256
+eps: 1.0e-5
+alpha: 0.99
+gamma: 0.99
+use_gae: false
+tau: 0.95
+entropy_coef: 0.001
+value_loss_coef: 0.5
+max_grad_norm: 0.5
+num_global_steps: 20
+ppo_epoch: 4
+num_mini_batch: 1
+clip_param: 0.2
+use_recurrent_global: 0
+num_local_steps: 40
+reward_coeff: 0.1
+intrinsic_rew_coeff: 0.02
+sem_pred_prob_thr: 0.50
+global_downscaling: 3
+vision_range: 100
+du_scale: 1
+cat_pred_threshold: 5.0
+map_pred_threshold: 1.0
+exp_pred_threshold: 1.0
+
+kernel_size: 91
+low_dense: 8
+succeed_match_points: 200
+big_enough_f: 0.16666666666666666
+big_enough_thresh: 4
+turn_angle: 15
+
+# map
+num_sem_categories: 16
+map_size_cm: 3600
+map_resolution: 5
+
+# LLM and VLM
+llm_model: "gemma3:12b-it-qat"
+vlm_model: "gemma3:12b-it-qat"
+# gemma3:12b-it-qat
+# llama3.2-vision
+# gemma3:12b
+api_key: "ollama"
+base_url: "http://localhost:11434/v1/"
