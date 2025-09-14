@@ -1,6 +1,6 @@
 # ForesightVLN: Dynamic Adaptive Framework for Efficient Zero-Shot Navigation in Semantically Sparse Environments
 
-### [Paper (Coming Soon)]() | [Project Page (Coming Soon)]() | [Video Demo (Coming Soon)]()
+### Anonymous
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](#license)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/release/python-380/)
@@ -198,10 +198,10 @@ This project is licensed under the MIT License. See the [LICENSE](https://www.go
 If you find our work useful for your research, please consider citing our paper:
 
 ```bibtex
-@inproceedings{lu2025foresightvln,
+@inproceedings{Anonymous,
   title={ForesightVLN: Dynamic Adaptive Framework for Efficient Zero-Shot Navigation in Semantically Sparse Environments},
-  author={Lü, Zhiwei and Fang, Chengjie and Lai, Xinhua and Chen, Dongjie and Xu, Jungang},
-  booktitle={Conference Proceedings},
+  author={Anonymous},
+  booktitle={Anonymous},
   year={2025}
 }
 ```
