@@ -1,4 +1,3 @@
-````markdown
 # ForesightVLN: Dynamic Adaptive Framework for Efficient Zero-Shot Navigation in Semantically Sparse Environments
 
 ### [Paper (Coming Soon)]() | [Project Page (Coming Soon)]() | [Video Demo (Coming Soon)]()
