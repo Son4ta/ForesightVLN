@@ -9,10 +9,10 @@ import random
 import math
 from src.utils.fmm.pose_utils import get_rel_pose_change
 
-# 尝试从项目中导入类别映射，如果失败则使用一个默认值
+# Try to import category mappings from the project; use a default if it fails
 try:
     from configs.categories import name2index, hm3d_to_coco
-    # 你可能需要为 ProcTHOR 创建一个新的映射
+    # You may need to create a new mapping for ProcTHOR
     # from configs.categories import procthor_to_unigoal_map
 except ImportError:
     print("Warning: Could not import category mappings from 'configs.categories'. Using defaults.")
@@ -57,12 +57,12 @@ class AI2Thor_Env:
             gridSize=self.args.grid_size, # 0.25 in Habitat
             renderDepthImage=True,
             renderInstanceSegmentation=True,
-            # 输出长宽
+            # Output width and height
             width=self.args.env_frame_width,
             height=self.args.env_frame_height,
             fieldOfView=self.args.hfov,
             horizon=0.0, # Look straight ahead
-            # ↓为服务器端运行添加 headless 模式
+            # ↓ Add headless mode for server-side running
             platform=CloudRendering
         )
 
@@ -140,7 +140,7 @@ class AI2Thor_Env:
         self.success = False
         self.last_agent_action = None
 
-        # --- 配合一下上级调用的需要，更新goal_object_id object_category ---
+        # --- For compatibility with upper-level calls, update goal_object_id and object_category ---
         self._setup_episode_goal()
 
         # Calculate shortest path for SPL
@@ -177,7 +177,7 @@ class AI2Thor_Env:
             action_id = action['action']
         else:
             action_id = action
-        # 直接从映射中获取正确的动作名 ("MoveAhead", "RotateLeft", etc.)
+        # Directly get the correct action name from the mapping ("MoveAhead", "RotateLeft", etc.)
         action_str = self._action_mapping.get(action_id)
         
         # Store location before action for dx, dy, do calculation
@@ -191,9 +191,9 @@ class AI2Thor_Env:
             event = self.controller.step(action=action_str)
         else:
             '''
-            根据 AI2-THOR 的官方文档，RotateLeft 和 RotateRight 默认旋转一个固定的角度
-            要以一个自定义的角度旋转，应该使用 Rotate 动作，并通过 degrees 参数来指定旋转的角度
-            正值为右转，负值为左转
+            According to the official AI2-THOR documentation, RotateLeft and RotateRight rotate by a fixed angle by default.
+            To rotate by a custom angle, use the Rotate action and specify the degrees parameter.
+            Positive is right, negative is left.
             '''
             event = self.controller.step(action=action_str, degrees=self.rotation_degrees)
         
@@ -227,24 +227,24 @@ class AI2Thor_Env:
         pos = agent_meta['position']
         rot_deg = agent_meta['rotation']['y']
         
-        # 将AI2-THOR的左手坐标系位置 (x, y, z) 转换为Habitat的右手坐标系 (x, y, -z)
-        # 这一步对于点云投影非常关键
+        # Convert AI2-THOR's left-handed coordinate position (x, y, z) to Habitat's right-handed coordinate (x, y, -z)
+        # This step is critical for point cloud projection
         habitat_position = np.array([pos['x'], pos['y'], -pos['z']], dtype=np.float32)
 
-        # AI2-THOR的旋转（左手系，y-up）和Habitat（右手系，y-up）的yaw角定义一致
+        # The yaw angle definition of AI2-THOR (left-handed, y-up) and Habitat (right-handed, y-up) is consistent
         yaw_rad = np.deg2rad(-rot_deg)
         q = quaternion.from_euler_angles(0, yaw_rad, 0)
 
         return {'position': habitat_position, 'rotation': q}
 
     def _get_agent_location(self):
-        # 这个函数定义了项目的“地图坐标系”
-        # 它从3D世界坐标生成一个2D地图坐标 (map_x, map_y) 和朝向
+        # This function defines the project's "map coordinate system"
+        # It generates a 2D map coordinate (map_x, map_y) and orientation from 3D world coordinates
         agent_pose_hab = self.get_agent_pose()
-        # pos_hab 是 Habitat 坐标系下的 (x, y, z)
+        # pos_hab is (x, y, z) in Habitat coordinates
         pos_hab = agent_pose_hab['position']
         
-        # 将3D坐标转换为2D地图坐标
+        # Convert 3D coordinates to 2D map coordinates
         # x_map = -z_hab, y_map = -x_hab
         map_x = -pos_hab[2]
         map_y = -pos_hab[0]
@@ -255,31 +255,31 @@ class AI2Thor_Env:
 
     def _get_location_change(self):
         # ===============================================
-        #  >>> 里程计计算 <<<
-        #  计算相对位移和旋转变化，x+是向前，r+是向左旋转，r-是向右旋转
-        #  注意: AI2-THOR 的坐标系是左手系
+        #  >>> Odometer calculation <<<
+        #  Calculate relative displacement and rotation change, x+ is forward, r+ is left turn, r- is right turn
+        #  Note: AI2-THOR's coordinate system is left-handed
         # ===============================================
         dx, dy, do = 0.0, 0.0, 0.0
         current_location = self._get_agent_location()
         action_str = self.last_agent_action
         if action_str == None:
-            # 如果没有动作，返回零变化
+            # If there is no action, return zero change
             return [0.0, 0.0, 0.0]
         elif action_str == "MoveAhead":
-            # 获取上一帧和当前帧在地图坐标系下的位姿
+            # Get the pose in map coordinates for the previous and current frames
             x1, y1, o1 = self.last_agent_location
             x2, y2, o2 = current_location
             dx = math.sqrt((x2 - x1)**2 + (y2 - y1)**2)
-            # 向前移动，就是向前移动了一个固定的步长
+            # Moving forward means moving a fixed step length forward
             # dx = self.args.grid_size
         elif action_str == "RotateLeft":
-            # 左转，就是逆时针旋转了一个固定的角度
+            # Left turn means rotating counterclockwise by a fixed angle
             do = np.deg2rad(self.rotation_degrees)
         elif action_str == "RotateRight":
-            # 右转，就是顺时针旋转了一个固定的角度
+            # Right turn means rotating clockwise by a fixed angle
             do = -np.deg2rad(self.rotation_degrees)
         
-        # [向前位移, 侧向位移, 逆时针旋转]
+        # [forward displacement, lateral displacement, counterclockwise rotation]
         self.last_agent_location = current_location
         return dx, dy, do
         
@@ -291,18 +291,18 @@ class AI2Thor_Env:
             current_location, self.last_agent_location)
         self.last_agent_location = current_location
 
-        # 计算世界坐标系下的位移
+        # Calculate displacement in world coordinates
         dx_world = x2 - x1
         dy_world = y2 - y1
 
-        # 将世界位移旋转到上一步的局部坐标系中
+        # Rotate the world displacement into the previous local coordinate system
         # sin(-o1) = -sin(o1), cos(-o1) = cos(o1)
         dx_local = dx_world * np.cos(o1) + dy_world * np.sin(o1)
         dy_local = -dx_world * np.sin(o1) + dy_world * np.cos(o1)
         
-        # 计算朝向变化
+        # Calculate orientation change
         do = o2 - o1
-        # 将角度变化归一化到 [-pi, pi]
+        # Normalize the angle change to [-pi, pi]
         if do > np.pi:
             do -= 2 * np.pi
         if do < -np.pi:
@@ -310,9 +310,9 @@ class AI2Thor_Env:
 
         self.last_agent_location = current_location
 
-        # UniGoal 的建图模块期望的 sensor_pose 是 [向前移动距离, 侧向移动距离, 逆时针旋转角度]
-        # dx_local 是向前, dy_local 是向右, do 是逆时针旋转
-        # 注意: dx_local 是米，而BEV模块的pose是米。单位一致。
+        # The mapping module of UniGoal expects sensor_pose as [forward movement distance, lateral movement distance, counterclockwise rotation angle]
+        # dx_local is forward, dy_local is right, do is counterclockwise rotation
+        # Note: dx_local is in meters, and the BEV module's pose is also in meters. Units are consistent.
         return [dx_local, dy_local, do]
 
     
@@ -352,9 +352,9 @@ class AI2Thor_Env:
         self.goal_position = self.target_object['position']
         
         # --- Populate info to self.current_episode by fake_episode---
-        # 创建一个空的 SimpleNamespace 对象，因为没法直接改变 self.current_episode
+        # Create an empty SimpleNamespace object, because we can't directly change self.current_episode
         fake_episode = SimpleNamespace()
-        #TODO 这里有很大问题，asset_id = 'Wall_Decor_Photo_6'，下面逻辑要重写
+        # TODO There is a big problem here, asset_id = 'Wall_Decor_Photo_6', the logic below needs to be rewritten
         asset_id = self.target_object['assetId']
         category_name = self.target_object['objectType'].lower() # Use objectType directly
         fake_episode.object_category = category_name
@@ -372,48 +372,48 @@ class AI2Thor_Env:
             self.info['text_goal'] = f"Find the {category_name.replace('_', ' ')}."
             fake_episode.text_goal = f"Find the {category_name.replace('_', ' ')}."
 
-        #TODO ☠这里改变了self.current_episode，预计没有影响，因为后续流程没有用到current_episode，请验证
+        # TODO ☠ Changing self.current_episode here is expected to have no effect, as the subsequent process does not use current_episode. Please verify.
         self.current_episode = fake_episode
 
 
 
     def _get_goal_image(self):
         """
-        在场景中从一个预定义的目标列表中寻找一个物体实例，并为其生成一个清晰的、
-        且保持最小安全距离的图像。该过程不移动主Agent。
+        In the scene, find an object instance from a predefined target list and generate a clear image of it
+        while maintaining a minimum safe distance. This process does not move the main Agent.
         """
-        # 1. 定义一个目标物体类别列表
-        # 函数将从以下列表中随机寻找一个类型的物体
+        # 1. Define a list of target object categories
+        # The function will randomly look for an object of one of the following types
         TARGET_OBJECT_TYPES = [
             "Chair", "Sofa", "ArmChair", "Bed", "Desk"
         ]
 
-        # 2. 在场景中寻找列表内任一类型的实例
+        # 2. Find any instance of the listed types in the scene
         all_objects = self.controller.last_event.metadata['objects']
         
-        # 筛选出所有属于目标列表中的物体实例
+        # Filter all object instances belonging to the target list
         possible_targets = [obj for obj in all_objects if obj['objectType'] in TARGET_OBJECT_TYPES]
         
         if not possible_targets:
-            print(f"错误: 在场景中没有找到列表 {TARGET_OBJECT_TYPES} 中的任何物体。")
+            print(f"Error: No objects from the list {TARGET_OBJECT_TYPES} found in the scene.")
             return np.zeros((self.args.frame_height, self.args.frame_width, 3), dtype=np.uint8)
 
-        # 从找到的实例中随机选择一个
+        # Randomly select one from the found instances
         target_object_info = random.choice(possible_targets)
         goal_position = target_object_info['position']
-        print(f"已选择目标实例: {target_object_info['objectId']} (类型: {target_object_info['objectType']})")
+        print(f"Selected target instance: {target_object_info['objectId']} (type: {target_object_info['objectType']})")
 
-        # 3. 寻找一个满足最小距离要求的最佳相机视点
+        # 3. Find the best camera viewpoint that meets the minimum distance requirement
         try:
             reachable_pos = self.controller.step(action="GetReachablePositions").metadata["actionReturn"]
             if not reachable_pos:
-                raise ValueError("在环境中没有找到可到达的位置。")
+                raise ValueError("No reachable positions found in the environment.")
         except Exception as e:
-            print(f"获取可到达位置时出错: {e}")
+            print(f"Error getting reachable positions: {e}")
             return np.zeros((self.args.frame_height, self.args.frame_width, 3), dtype=np.uint8)
 
         # ===================================================================
-        # >>> 核心修改: 筛选出所有与目标距离 >= 0.5米 的可到达点 <<<
+        # >>> Core modification: Filter all reachable points at distance >= 0.5m from the target <<<
         # ===================================================================
         MIN_DISTANCE = 0.5
         valid_viewpoints = []
@@ -426,22 +426,22 @@ class AI2Thor_Env:
                 valid_viewpoints.append({'pos': pos, 'dist': dist})
                 
         if not valid_viewpoints:
-            print(f"警告: 找不到任何与目标距离至少 {MIN_DISTANCE}米 的可到达视点。")
+            print(f"Warning: No reachable viewpoints at least {MIN_DISTANCE}m from the target found.")
             return np.zeros((self.args.frame_height, self.args.frame_width, 3), dtype=np.uint8)
 
-        # 从满足条件的视点中，找到离目标最近的一个
+        # From the valid viewpoints, find the one closest to the target
         best_viewpoint_info = min(valid_viewpoints, key=lambda x: x['dist'])
         best_viewpoint = best_viewpoint_info['pos']
-        print(f"已找到最佳视点，距离目标 {best_viewpoint_info['dist']:.2f}米")
+        print(f"Found best viewpoint, distance to target {best_viewpoint_info['dist']:.2f}m")
 
-        # 4. 计算相机位置和旋转，使其朝向目标
+        # 4. Calculate camera position and rotation to face the target
         camera_position = {'x': best_viewpoint['x'], 'y': best_viewpoint['y'] + 0.6, 'z': best_viewpoint['z']}
         direction_vector = {'x': goal_position['x'] - camera_position['x'], 'z': goal_position['z'] - camera_position['z']}
         yaw_angle = math.degrees(math.atan2(direction_vector['x'], direction_vector['z']))
         pitch_angle = 30.0
         camera_rotation = {'x': pitch_angle, 'y': yaw_angle, 'z': 0}
 
-        # 5. 添加第三人称摄像头并捕获图像
+        # 5. Add a third-person camera and capture the image
         event = self.controller.step(
             action="AddThirdPartyCamera",
             position=camera_position,
@@ -450,32 +450,32 @@ class AI2Thor_Env:
         )
 
         if not event.third_party_camera_frames or len(event.third_party_camera_frames) == 0:
-            print("错误: 添加第三人称摄像头后未能获取图像。")
+            print("Error: No image obtained after adding third-party camera.")
             return np.zeros((self.args.frame_height, self.args.frame_width, 3), dtype=np.uint8)
 
-        # 6. 处理图像格式并返回
+        # 6. Process image format and return
         rgba_frame = event.third_party_camera_frames[0]
         rgb_frame = rgba_frame[:, :, :3].astype(np.uint8)
 
-        print(f"成功为 {target_object_info['objectId']} 生成目标图像。")
+        print(f"Successfully generated goal image for {target_object_info['objectId']}.")
         return rgb_frame
 
     def _format_observation(self, event):
         # ===============================================
-        #  >>> 核心修复 3: 简化并校正传感器模拟 <<<
-        #  确保深度图和坐标系与建图模块的期望一致
+        #  >>> Core fix 3: Simplify and correct sensor simulation <<<
+        #  Ensure depth map and coordinate system match the mapping module's expectations
         # ===============================================
         obs = {}
         obs['rgb'] = event.frame.astype(np.uint8)
         
-        # 1. 深度图处理：过滤无效值并转换为厘米
+        # 1. Depth map processing: filter invalid values and convert to centimeters
         depth_meters = event.depth_frame.astype(np.float32)
-        depth_meters[depth_meters >= self.args.max_depth] = 0 # 过滤远距离点
-        depth_meters[depth_meters <= self.args.min_depth] = 0 # 过滤近距离点
-        obs['depth'] = np.expand_dims(depth_meters * 100.0, axis=2) # 转换为厘米
+        depth_meters[depth_meters >= self.args.max_depth] = 0 # Filter distant points
+        depth_meters[depth_meters <= self.args.min_depth] = 0 # Filter close points
+        obs['depth'] = np.expand_dims(depth_meters * 100.0, axis=2) # Convert to centimeters
 
-        # 2. GPS 和 Compass
-        # get_agent_pose() 已经处理了坐标系变换
+        # 2. GPS and Compass
+        # get_agent_pose() has already handled coordinate transformation
         agent_pose_hab = self.get_agent_pose()
         obs['gps'] = agent_pose_hab['position'][[2, 0]] # [-z, -x] -> [-z, x] if needed. Let's use [-z, x]
         obs['gps'][1] *= -1.0
@@ -484,7 +484,7 @@ class AI2Thor_Env:
         obs['compass'] = np.array([yaw_rad], dtype=np.float32)
 
         # ===============================================
-        #  >>> 在这里添加 instance_imagegoal <<<
+        #  >>> Add instance_imagegoal here <<<
         # ===============================================
         if self.args.goal_type == 'ins-image' and hasattr(self, 'info') and 'instance_imagegoal' in self.info:
             obs['instance_imagegoal'] = self.info['instance_imagegoal']

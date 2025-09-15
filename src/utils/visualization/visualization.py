@@ -115,13 +115,13 @@ def add_text_list(image: np.ndarray, text_list: list, position=(10, 20), font=cv
     return image
 
 '''
-新增↓
+New addition ↓
 '''
 
 def init_vis_image_v2(goal_name, args):
     """
     >>> v3.1 LAYOUT <<<
-    调整右下角两个面板的比例。
+    Adjust the proportions of the two panels in the bottom right corner.
     """
     width, height = 1800, 900
     vis_image = np.ones((height, width, 3), dtype=np.uint8) * 245
@@ -130,19 +130,19 @@ def init_vis_image_v2(goal_name, args):
     color = (0, 0, 0)
     thickness = 1
 
-    # --- 定义面板位置和尺寸 ---
+    # --- Define panel positions and dimensions ---
     margin = 30
     col1_width = 800
     col2_width = width - col1_width - 3 * margin
     col2_x_start = col1_width + 2 * margin
 
-    # --- Panel 1: 主视角 ---
+    # --- Panel 1: Main View ---
     p1_x, p1_y, p1_w, p1_h = margin, margin, col1_width, height - 2 * margin
     cv2.putText(vis_image, "Agent's Egocentric View", (p1_x, p1_y - 10), font, font_scale, color, thickness)
     cv2.rectangle(vis_image, (p1_x, p1_y), (p1_x + p1_w, p1_y + p1_h), (180, 180, 180), 1)
 
-    # --- 右侧列 ---
-    # --- Panel 2: 全局地图 ---
+    # --- Right column ---
+    # --- Panel 2: Global Map ---
     p2_h = int((height - 3 * margin) * 0.6)
     p2_x, p2_y, p2_w = col2_x_start, margin, col2_width
     cv2.putText(vis_image, "Global Map & Planning", (p2_x, p2_y - 10), font, font_scale, color, thickness)
@@ -151,7 +151,7 @@ def init_vis_image_v2(goal_name, args):
     p3_y_start = p2_y + p2_h + margin
     p3_h = height - p3_y_start - margin
 
-    # --- FIX: 调整面板宽度比例 (Task Goal 35%, Semantic Map 65%) ---
+    # --- FIX: Adjust panel width ratio (Task Goal 35%, Semantic Map 65%) ---
     p3_w = int((col2_width - margin) * 0.35)
     p3_x = col2_x_start
     cv2.putText(vis_image, "Task Goal", (p3_x, p3_y_start - 10), font, font_scale, color, thickness)
@@ -166,24 +166,24 @@ def init_vis_image_v2(goal_name, args):
     return vis_image
 
 def draw_frontiers(map_img, frontiers, color=(0, 255, 255), radius=3):
-    """在地图上绘制前沿点。"""
+    """Draw frontier points on the map."""
     if frontiers is None or len(frontiers) == 0:
         return map_img
     
     for (y, x) in frontiers:
-        # 注意OpenCV的坐标顺序是(x, y)
+        # Note: OpenCV coordinate order is (x, y)
         cv2.circle(map_img, (int(x), int(y)), radius, color, -1)
     return map_img
 
 def draw_tsp_path(map_img, frontiers, path, color=(255, 0, 255), thickness=2):
-    """在地图上绘制TSP路径。"""
+    """Draw TSP path on the map."""
     if frontiers is None or path is None or len(path) < 2:
         return map_img
 
-    # 将路径索引映射到实际坐标
+    # Map path indices to actual coordinates
     path_coords = frontiers[path]
 
-    # 绘制路径线段
+    # Draw path line segments
     for i in range(len(path_coords) - 1):
         pt1 = (int(path_coords[i][1]), int(path_coords[i][0]))       # (x, y)
         pt2 = (int(path_coords[i+1][1]), int(path_coords[i+1][0])) # (x, y)

@@ -1,7 +1,5 @@
 # --- Debug Settings ---
-# 是否保存调试图像的开关 (True 或 False)
 save_debug_images: False
-# 调试图像的保存路径
 debug_save_dir: "debug_output"
 
 seed: 1

@@ -40,12 +40,12 @@ import GroundingDINO.groundingdino.datasets.transforms as T
 from segment_anything import sam_model_registry, SamPredictor
 from lightglue import LightGlue, DISK
 from lightglue.utils import match_pair , numpy_image_to_torch
-# 引入 python-tsp 库用于解决旅行商问题
+# Import python-tsp library for solving Traveling Salesman Problem
 from python_tsp.exact import solve_tsp_dynamic_programming
 
-from collections import deque # <<< 高效地实现固定长度的队列
-from scipy.spatial.distance import cdist # <<< 快速计算距离
-from sklearn.cluster import DBSCAN # <<< 聚类
+from collections import deque # <<< Efficiently implement fixed-length queue
+from scipy.spatial.distance import cdist # <<< Fast distance calculation
+from sklearn.cluster import DBSCAN # <<< Clustering
 
 import json
 import re
@@ -260,47 +260,47 @@ Please provide the relationship you can determine from the image.
         self.extractor = DISK(max_num_keypoints=2048).eval().to(self.device)
         self.image_matcher = LightGlue(features='disk').eval().to(self.device)
 
-        # >>> 新增: 为自适应探索策略和TSP添加核心属性 <<<
-        # 核心思想: 遵循ApexNav，创建并维护一个全局的语义价值地图，用于指导探索决策。
+        # >>> New: Add core attributes for adaptive exploration strategy and TSP <<<
+        # Core idea: Follow ApexNav, create and maintain a global semantic value map to guide exploration decisions.
         
-        # 1. 语义价值地图 (Semantic Score Map): 存储每个地图栅格与当前目标的语义相关性得分。
-        #    初始化为0，大小与主地图 `full_map` 一致。
-        self.semantic_score_map = None # 将在 set_full_map 中初始化
+        # 1. Semantic Score Map: Stores semantic relevance scores between each map grid and current target.
+        #    Initialized to 0, same size as main map `full_map`.
+        self.semantic_score_map = None # Will be initialized in set_full_map
 
-        # 2. 语义置信度地图 (Semantic Confidence Map): 用于加权平均更新语义得分，实现多帧信息融合。
-        self.semantic_confidence_map = None # 将在 set_full_map 中初始化
+        # 2. Semantic Confidence Map: Used for weighted average updates of semantic scores, enabling multi-frame information fusion.
+        self.semantic_confidence_map = None # Will be initialized in set_full_map
 
-        # 3. 前沿点位置 (Frontier Locations): 存储当前所有检测到的前沿点坐标 [(y1, x1), (y2, x2), ...]。
-        #    这个属性会在 get_goal 函数中被更新。
+        # 3. Frontier Locations: Stores coordinates of all currently detected frontier points [(y1, x1), (y2, x2), ...].
+        #    This attribute will be updated in the get_goal function.
         self.frontier_locations = None
         
-        # 4. 当前子图目标 (Subgraph Goal): 用于在不同探索策略间共享当前需要寻找的目标。
+        # 4. Current Subgraph Goal: Used to share the current target to be found between different exploration strategies.
         self.subgraph = None
         
-        # 5. 可行走区域地图 (Traversible Map): FMM Planner 需要一个可行走区域的二值图。
+        # 5. Traversible Map: FMM Planner requires a binary map of traversible areas.
         self.traversible = None
         
-        # 6. 智能体在可行走地图中的起始坐标 (Agent Start Pose on Map)。
+        # 6. Agent Start Pose on Map: Starting coordinates of agent in traversible map.
         self.start = None
 
-        # 新增一个属性，用于存储上一步的自由空间地图，以便计算新可见区域
+        # Add an attribute to store the previous free space map for calculating newly visible areas
         self.prev_free_map = None
-        # 路径记录
+        # Path recording
         self.tsp_path_info = None
-        # >>> 结束新增属性 <<<
+        # >>> End of new attributes <<<
 
-        # >>> 新增: 路径历史记录，用于优化探索策略 <<<
-        self.path_history = deque(maxlen=30) # 存储最近的30个位置点
+        # >>> New: Path history recording for optimizing exploration strategy <<<
+        self.path_history = deque(maxlen=30) # Store the most recent 30 position points
 
-                # >>> 新增: VLM 上下文管理模块 <<<
-        # 长期摘要，由LLM定期更新
+                # >>> New: VLM context management module <<<
+        # Long-term summary, updated regularly by LLM
         self.vlm_context_summary = "Mission has just started. I need to explore the environment to find the target." 
-        # 短期记忆，存储最近的 N 次交互
+        # Short-term memory, stores recent N interactions
         self.vlm_short_term_memory = deque(maxlen=5) 
-        # VLM对找到目标的判断和信度
+        # VLM judgment and confidence for finding target
         self.vlm_found_goal = False
         self.vlm_goal_confidence = 0.0
-        # 用于控制摘要更新频率的计数器
+        # Counter for controlling summary update frequency
         self.vlm_update_counter = 0
 
     def set_cfg(self):
@@ -352,14 +352,14 @@ Please provide the relationship you can determine from the image.
 
     def set_full_map(self, full_map):
         self.full_map = full_map
-        # >>> 修改: 在这里初始化语义地图，确保它们在 `full_map` 创建后才被创建 <<<
+        # >>> Modified: Initialize semantic maps here, ensuring they are created after `full_map` is created <<<
         if self.semantic_score_map is None:
-            # 初始化一个与 full_map 同样大小的地图，用于存储VLM的语义得分
+            # Initialize a map of the same size as full_map to store VLM semantic scores
             self.semantic_score_map = torch.zeros_like(self.full_map[0,0], device=self.device, dtype=torch.float32).unsqueeze(0).unsqueeze(0)
-            # 存储每个格子的置信度，用于加权平均
+            # Store confidence for each grid cell for weighted averaging
             self.semantic_confidence_map = torch.zeros_like(self.full_map[0,0], device=self.device, dtype=torch.float32).unsqueeze(0).unsqueeze(0)
         
-        # 当第一次设置 full_map 时，初始化 prev_free_map
+        # When setting full_map for the first time, initialize prev_free_map
         if self.prev_free_map is None and self.full_map.shape[1] > 1:
             self.prev_free_map = torch.zeros_like(self.full_map[0, 1], device=self.device)
 
@@ -901,23 +901,23 @@ Please provide the relationship you can determine from the image.
         # self.update_edge()
         self.get_scenegraph()
         
-        # >>> 新增: 在每个步骤更新语义地图并进行可视化 <<<
-        # 这是整合新功能的核心入口点。
+        # >>> New: Update semantic map and visualize at each step <<<
+        # This is the core entry point for integrating new functionality.
         print("    Updating semantic score map...")
         self._update_semantic_score_map()
         print("    Visualizing semantic map...")
         self.visualize_semantic_map()
-        self.clear_line(3) # 清理三行输出
-        # >>> 结束新增 <<<
+        self.clear_line(3) # Clear three lines of output
+        # >>> End of new additions <<<
 
     def explore(self):
-        # >>> 修改: 重构 explore 方法以集成自适应策略 <<<
-        # 核心思想: 当高级的语义图匹配无法提供明确指引时，
-        # 不再退化为简单的探索，而是启动基于VLM和TSP的自适应探索模块。
+        # >>> Modified: Refactor explore method to integrate adaptive strategy <<<
+        # Core idea: When high-level semantic graph matching cannot provide clear guidance,
+        # instead of degrading to simple exploration, launch adaptive exploration module based on VLM and TSP.
         
         overlap = self.overlap()
         
-        # 保持原有高匹配度的逻辑不变
+        # Keep the original high matching logic unchanged
         if 0.5 <= overlap < 0.9 and len(self.matcher.common_nodes) >= 2:
             print("UniGoal Stage 3 (High Matching): Exploring remaining subgraph nodes.")
             goal = self.explore_remaining()
@@ -925,16 +925,16 @@ Please provide the relationship you can determine from the image.
             print("UniGoal Stage 4 (Very High Matching): Correcting scene graph reasonableness.")
             goal = self.reasonableness_correction()
         else:
-            # 当匹配度低时，调用封装好的自适应探索策略，这是本次修改的核心。
-            # 这里取代了原有的 explore_subgraph() 或更简单的贪心搜索。
+            # When matching is low, call the packaged adaptive exploration strategy, which is the core of this modification.
+            # This replaces the original explore_subgraph() or simpler greedy search.
             print(f"UniGoal Stage 1/2 (Low Matching, Overlap: {overlap:.2f}): Switching to Adaptive Exploration.")
             goal = self._adaptive_explore()
         
-        # get_goal 会根据计算出的目标点（可能是None）和当前前沿，选择一个最终的可达目标。
+        # get_goal will select a final reachable target based on the calculated goal point (possibly None) and current frontiers.
         goal = self.get_goal(goal)
         
         return goal
-        # >>> 结束修改 <<<
+        # >>> End of modifications <<<
 
     def explore_subgraph(self, goal=None):
         if goal == None:
@@ -1025,10 +1025,10 @@ Please provide the relationship you can determine from the image.
         diff = fbe_map - fbe_cpp # intersection between unknown area and free area 
         frontier_map = diff == 1
         frontier_map = remove_small_frontiers(frontier_map, min_size=20)
-        # >>> 修改: 更新 self.frontier_locations 属性 <<<
-        # 将张量转换为numpy数组，并存储前沿点的位置
+        # >>> Modified: Update self.frontier_locations attribute <<<
+        # Convert tensor to numpy array and store frontier point positions
         frontier_locations_tensor = torch.stack(torch.where(frontier_map)).T
-        self.frontier_locations = frontier_locations_tensor.cpu().numpy() # 存储为 Nx2 的 numpy 数组
+        self.frontier_locations = frontier_locations_tensor.cpu().numpy() # Store as Nx2 numpy array
 
         num_frontiers = len(self.frontier_locations)
         if num_frontiers == 0:
@@ -1042,34 +1042,34 @@ Please provide the relationship you can determine from the image.
         input_pose[6] = self.full_map.shape[-1]
         traversible, start = self.get_traversible(self.full_map.cpu().numpy()[0, 0, ::-1], input_pose)
         
-        # >>> 修改: 更新FMM规划器所需的信息 <<<
+        # >>> Modified: Update information required by FMM planner <<<
         self.traversible = traversible
         self.start = start
         
-        # 如果 `goal` (由自适应策略提供) 不为 None，直接使用它。
-        # 如果为 None (例如所有探索策略都失败了)，则退回到原有的基于距离的贪心选择。
+        # If `goal` (provided by adaptive strategy) is not None, use it directly.
+        # If None (e.g., all exploration strategies failed), fall back to original distance-based greedy selection.
         if goal is not None and (isinstance(goal, list) or isinstance(goal, np.ndarray)):
-            # 这种情况是自适应探索策略给出了一个明确的目标点。
-            # 我们直接返回这个点。注意，原函数后续还有复杂的加权打分，
-            # 为了简化并遵循新策略，我们直接采纳 `_adaptive_explore` 的决策。
-            # `goal` 已经是地图坐标，无需再转换。
+            # This case is when adaptive exploration strategy provides a clear target point.
+            # We directly return this point. Note that the original function has complex weighted scoring afterwards,
+            # but to simplify and follow the new strategy, we directly adopt the decision from `_adaptive_explore`.
+            # `goal` is already in map coordinates, no need to convert.
             return goal
 
-        # --- 以下是当 `goal` 为 None 时的回退逻辑 (原有的贪心逻辑) ---
+        # --- The following is the fallback logic when `goal` is None (original greedy logic) ---
         planner = FMMPlanner(traversible)
         state = [start[0] + 1, start[1] + 1]
         planner.set_goal(state)
         fmm_dist = planner.fmm_dist[::-1]
         
-        # 注意: 这里 frontier_locations 是 numpy array
+        # Note: frontier_locations here is numpy array
         frontier_locations_fmm = self.frontier_locations + 1
-        # 提取距离
+        # Extract distances
         distances = fmm_dist[frontier_locations_fmm[:, 0], frontier_locations_fmm[:, 1]] / 20
 
         distance_threshold = 1.2
         idx_valid = np.where(distances >= distance_threshold)[0]
         if len(idx_valid) == 0:
-            # 如果没有符合距离阈值的，就选最近的那个
+            # If no frontiers meet the distance threshold, choose the closest one
             if len(distances) > 0:
                 closest_idx = np.argmin(distances)
                 return self.frontier_locations[closest_idx]
@@ -1078,13 +1078,13 @@ Please provide the relationship you can determine from the image.
         distances_valid = distances[idx_valid]
         distances_valid_inverse = 10 - (np.clip(distances_valid, 0, 10 + distance_threshold) - distance_threshold)
         
-        # 选择得分最高的那个
+        # Choose the one with the highest score
         idx_max_in_valid = np.argmax(distances_valid_inverse)
         final_idx_in_original = idx_valid[idx_max_in_valid]
         goal = self.frontier_locations[final_idx_in_original]
 
         if self.start is not None:
-            # 如果路径历史为空，或当前位置与上一个位置不同，则添加
+            # If path history is empty, or current position is different from previous position, add it
             if not self.path_history or np.any(self.path_history[-1] != self.start):
                 self.path_history.append(self.start)
 
@@ -1160,19 +1160,19 @@ Please provide the relationship you can determine from the image.
         self.group_nodes = []
         self.init_room_nodes()
         self.edge_list = []
-        # >>> 新增: 重置时清空语义地图 <<<
+        # >>> New: Clear semantic maps when resetting <<<
         self.semantic_score_map = None
         self.semantic_confidence_map = None
         self.prev_free_map = None
-        # 自由空间地图，以便计算新可见区域
+        # Free space map for calculating newly visible areas
         self.prev_free_map = None
-        # 路径记录
+        # Path recording
         self.tsp_path_info = None
-                # >>> 新增: 重置时清空路径历史 <<<
+                # >>> New: Clear path history when resetting <<<
         if hasattr(self, 'path_history'):
             self.path_history.clear()
 
-                # >>> 新增: 重置VLM上下文 <<<
+                # >>> New: Reset VLM context <<<
         self.vlm_context_summary = "Mission has just started. I need to explore the environment to find the target."
         self.vlm_short_term_memory.clear()
         self.vlm_found_goal = False
@@ -1200,53 +1200,53 @@ Please provide the relationship you can determine from the image.
         return value
     
     # ===================================================================
-    # >>> 新增: 核心改造部分 - 自适应探索所需的所有新函数 <<<
+    # >>> New: Core refactoring section - All new functions required for adaptive exploration <<<
     # ===================================================================
 
     def _adaptive_explore(self):
         """
-        >>> 新增 <<<
-        封装了 ApexNav 思想的自适应探索策略。
-        该策略会根据环境语义线索的强弱，动态选择探索模式。
+        >>> New <<<
+        Adaptive exploration strategy that encapsulates ApexNav ideas.
+        This strategy dynamically selects exploration modes based on the strength of environmental semantic cues.
 
-        返回:
-            np.ndarray: 计算出的下一个目标点坐标 (y, x)，如果无法决策则返回 None。
+        Returns:
+            np.ndarray: Calculated next target point coordinates (y, x), returns None if unable to decide.
         """
-        # 1. 确保我们有一个目标子图作为VLM查询的依据
+        # 1. Ensure we have a target subgraph as the basis for VLM queries
         if not hasattr(self, 'subgraph') or self.subgraph is None:
              if self.goalgraph_decomposed and 'subgraph_1' in self.goalgraph_decomposed:
                  self.subgraph = self.goalgraph_decomposed['subgraph_1']
              else:
-                 # 如果没有分解的子图，使用整个目标图作为探索依据
+                 # If no decomposed subgraph, use the entire goal graph as exploration basis
                  self.subgraph = self.goalgraph
 
-        # 2. 计算所有前沿点的语义得分
+        # 2. Calculate semantic scores for all frontier points
         frontier_scores = self._calculate_frontier_semantic_scores()
         
-        # 3. 如果没有有效的前沿或得分，则退回到最简单的几何探索
+        # 3. If no valid frontiers or scores, fall back to simplest geometric exploration
         if frontier_scores is None or len(frontier_scores) == 0:
             print("Adaptive Strategy: No valid frontiers or scores. Falling back to geometric exploration.")
             return self._explore_geometric()
 
-        # 4. 计算得分分布指标以判断语义线索强度
+        # 4. Calculate score distribution metrics to judge semantic cue strength
         s_max = np.max(frontier_scores)
         s_mean = np.mean(frontier_scores)
         s_std = np.std(frontier_scores)
         
-        # 确保s_mean不为零，避免除以零
+        # Ensure s_mean is not zero to avoid division by zero
         ratio = s_max / s_mean if s_mean > 1e-6 else 0
 
-        # 5. 从配置中读取或使用默认阈值
+        # 5. Read from configuration or use default thresholds
         r_threshold = getattr(self.args, 'adaptive_r_threshold', 1.10)
         sigma_threshold = getattr(self.args, 'adaptive_sigma_threshold', 0.015)
 
-        # 6. 根据指标进行决策并调用相应的探索模式
+        # 6. Make decisions based on metrics and call corresponding exploration modes
         if ratio > r_threshold and s_std > sigma_threshold:
-            # 语义线索强 -> 执行基于TSP的语义探索
+            # Strong semantic cues -> Execute TSP-based semantic exploration
             print(f"Adaptive Strategy: Strong semantic cues (Ratio: {ratio:.2f} > {r_threshold}, StdDev: {s_std:.3f} > {sigma_threshold}). Using TSP-based Semantic Exploration.")
             goal = self._explore_semantic_tsp(frontier_scores)
         else:
-            # 语义线索弱 -> 执行基于几何的探索
+            # Weak semantic cues -> Execute geometry-based exploration
             print(f"Adaptive Strategy: Weak semantic cues (Ratio: {ratio:.2f}, StdDev: {s_std:.3f}). Using Geometric Exploration.")
             goal = self._explore_geometric()
             
@@ -1254,41 +1254,41 @@ Please provide the relationship you can determine from the image.
 
     def _calculate_frontier_semantic_scores(self):
         """
-        >>> 新增 <<<
-        从已生成的 `semantic_score_map` 中为每个前沿点提取语义得分。
+        >>> New <<<
+        Extract semantic scores for each frontier point from the generated `semantic_score_map`.
         
-        返回:
-            list[float] or None: 每个前沿点的语义得分列表，或在无前沿点时返回 None。
+        Returns:
+            list[float] or None: List of semantic scores for each frontier point, or None if no frontiers.
         """
         if self.frontier_locations is None or len(self.frontier_locations) == 0:
             print("Semantic Scoring: No frontiers found.")
             return None
 
         frontier_scores = []
-        # 将 PyTorch 张量转为 NumPy 数组以便于索引
+        # Convert PyTorch tensor to NumPy array for easier indexing
         semantic_map_np = self.semantic_score_map.cpu().numpy()[0, 0]
 
-        # 遍历所有前沿点，查询它们在语义地图上的得分
+        # Iterate through all frontier points and query their scores on the semantic map
         for loc in self.frontier_locations:
-            y, x = loc # 注意坐标顺序是 (y, x)
-            # 确保坐标在地图范围内
+            y, x = loc # Note: coordinate order is (y, x)
+            # Ensure coordinates are within map bounds
             if 0 <= y < semantic_map_np.shape[0] and 0 <= x < semantic_map_np.shape[1]:
                 score = semantic_map_np[y, x]
                 frontier_scores.append(score)
             else:
-                # 如果前沿点在地图外（理论上不应发生），给一个0分
+                # If frontier point is outside map (theoretically shouldn't happen), give 0 score
                 frontier_scores.append(0.0)
                 
         return frontier_scores
 
     def _explore_geometric(self):
         """
-        >>> 修改后的版本 <<<
-        基于几何的探索：选择一个能引导智能体远离最近轨迹的前沿点。
-        适用于语义线索较弱的环境，目标是高效地扩大已知区域，避免重复探索。
+        >>> Modified version <<<
+        Geometry-based exploration: Select a frontier point that guides the agent away from recent trajectories.
+        Suitable for environments with weak semantic cues, aiming to efficiently expand known areas and avoid repetitive exploration.
 
-        返回:
-            np.ndarray or None: 计算出的最优前沿点坐标 (y, x)，或在无法规划时返回 None。
+        Returns:
+            np.ndarray or None: Calculated optimal frontier point coordinates (y, x), or None if unable to plan.
         """
         if self.traversible is None or self.start is None:
             print("Geometric Exploration: Traversible map or start pose not available.")
@@ -1298,26 +1298,26 @@ Please provide the relationship you can determine from the image.
             print("Geometric Exploration: No frontiers to explore.")
             return None
 
-        # 使用 FMMPlanner 计算从智能体到所有点的可行走距离
+        # Use FMMPlanner to calculate traversible distances from agent to all points
         planner = FMMPlanner(self.traversible, step_size=5)
         start_pose_fmm = (self.start[0] + 1, self.start[1] + 1)
         planner.set_goal(start_pose_fmm)
         fmm_dist = planner.fmm_dist
 
-        # 获取所有前沿点的距离
+        # Get distances to all frontier points
         frontier_locations_fmm = self.frontier_locations + 1
         distances = fmm_dist[frontier_locations_fmm[:, 0], frontier_locations_fmm[:, 1]]
         
-        # 过滤掉不可达的前沿点
+        # Filter out unreachable frontier points
         reachable_mask = distances < 1e5
         if not np.any(reachable_mask):
-            return None # 没有可达的前沿点
+            return None # No reachable frontier points
 
         reachable_frontiers = self.frontier_locations[reachable_mask]
         reachable_distances = distances[reachable_mask]
 
-        # --- 新增逻辑：惩罚靠近最近路径的前沿点 ---
-        # 如果路径历史还不够长，则使用原始的“最近点”策略，避免早期行为异常
+        # --- New logic: Penalize frontier points near recent path ---
+        # If path history is not long enough, use original "nearest point" strategy to avoid early behavior anomalies
         if len(self.path_history) < 10:
             print("Geometric Exploration: Path history is short, choosing nearest frontier.")
             min_dist_idx = np.argmin(reachable_distances)
@@ -1327,30 +1327,30 @@ Please provide the relationship you can determine from the image.
         print("Geometric Exploration: Penalizing frontiers near recent path to avoid repetition.")
         history_points = np.array(list(self.path_history))
         
-        # 高效计算每个可达前沿点到“历史路径”中所有点的欧氏距离矩阵
+        # Efficiently calculate Euclidean distance matrix from each reachable frontier to all points in "historical path"
         dist_to_history = cdist(reachable_frontiers, history_points)
-        # 找到每个前沿点离历史路径的“最近”距离
+        # Find the "nearest" distance from each frontier point to historical path
         min_dist_to_history = np.min(dist_to_history, axis=1)
         
-        # 定义惩罚参数
-        penalty_radius = 25.0  # 惩罚半径（像素），若前沿点离路径小于此距离则受惩罚
-        penalty_strength = 10000.0 # 一个巨大的惩罚值，确保被惩罚的点不会被选中
+        # Define penalty parameters
+        penalty_radius = 25.0  # Penalty radius (pixels), frontier points within this distance from path are penalized
+        penalty_strength = 10000.0 # A huge penalty value to ensure penalized points are not selected
         
-        # 计算惩罚分数
+        # Calculate penalty scores
         path_penalty = np.zeros_like(reachable_distances)
         path_penalty[min_dist_to_history < penalty_radius] = penalty_strength
         
-        # 将原始的“行走距离”和“路径惩罚”相加，得到最终评分
+        # Add original "walking distance" and "path penalty" to get final score
         combined_scores = reachable_distances + path_penalty
         
-        # 【鲁棒性处理】如果所有可达前沿点都受到了惩罚（比如在狭窄通道里）
-        # 此时忽略惩罚，选择距离最近的点，避免卡死
+        # [Robustness handling] If all reachable frontier points are penalized (e.g., in narrow corridors)
+        # Ignore penalty and choose the nearest point to avoid getting stuck
         if np.all(path_penalty > 0):
             print("Geometric Exploration: All frontiers are near path. Ignoring penalty to avoid getting stuck.")
             min_dist_idx = np.argmin(reachable_distances)
             best_frontier = reachable_frontiers[min_dist_idx]
         else:
-            # 选择综合分数最低（距离近且远离旧路）的那个前沿点
+            # Choose the frontier point with lowest combined score (close distance and far from old path)
             min_score_idx = np.argmin(combined_scores)
             best_frontier = reachable_frontiers[min_score_idx]
             
@@ -1358,51 +1358,51 @@ Please provide the relationship you can determine from the image.
 
     def _explore_semantic_tsp(self, frontier_scores):
         """
-        >>> 修改后的版本 <<<
-        基于TSP的语义探索：在高价值前沿点之间规划最优访问路径。
-        新增了聚类预处理步骤，以选择更多样化、更高效的探索目标。
+        >>> Modified version <<<
+        TSP-based semantic exploration: Plan optimal access paths between high-value frontier points.
+        Added clustering preprocessing step to select more diverse and efficient exploration targets.
         """
         if self.traversible is None or self.start is None:
             return self._explore_geometric()
 
         scores = np.array(frontier_scores)
         
-        # 1. 筛选出所有得分高于平均分的前沿点
+        # 1. Filter out all frontier points with scores above average
         mean_score = np.mean(scores)
         high_score_indices = np.where(scores > mean_score)[0]
 
         if len(high_score_indices) == 0:
-            return self._explore_geometric() # 如果没有高分点，退回到几何探索
+            return self._explore_geometric() # If no high-score points, fall back to geometric exploration
 
         high_score_frontiers = self.frontier_locations[high_score_indices]
         high_scores = scores[high_score_indices]
 
-        # 2. >>> 新增：对高分前沿点进行聚类 <<<
+        # 2. >>> New: Cluster high-score frontier points <<<
         print(f"  TSP: Found {len(high_score_frontiers)} high-score frontiers. Clustering them...")
-        # 1.5米半径，地图分辨率为5cm/px时，半径为30像素
+        # 1.5 meter radius, when map resolution is 5cm/px, radius is 30 pixels
         clustering_radius_px = 1.5 * 100 / self.map_resolution 
         clustered_frontiers, clustered_scores = self._cluster_frontiers(
             high_score_frontiers, high_scores, radius_px=clustering_radius_px
         )
         print(f"  TSP: Clustered down to {len(clustered_frontiers)} representative frontiers.")
 
-        # 3. 从聚类后的代表点中，选择分数最高的Top-K个作为TSP的最终候选点
-        MAX_TSP_CITIES = 10 # 聚类后可以适当减少TSP的城市数量
+        # 3. From clustered representative points, select the top-K highest scoring ones as final TSP candidates
+        MAX_TSP_CITIES = 10 # Can appropriately reduce TSP city count after clustering
         if len(clustered_frontiers) > MAX_TSP_CITIES:
-            # np.argsort返回的是从小到大的索引，我们取最后K个
+            # np.argsort returns indices from small to large, we take the last K
             top_k_indices = np.argsort(clustered_scores)[-MAX_TSP_CITIES:]
             tsp_frontiers = clustered_frontiers[top_k_indices]
         else:
             tsp_frontiers = clustered_frontiers
 
         if len(tsp_frontiers) < 2:
-            self.tsp_path_info = None # 清除旧路径
+            self.tsp_path_info = None # Clear old path
             if len(tsp_frontiers) == 1:
-                return tsp_frontiers[0] # 如果只有一个代表点，直接设为目标
+                return tsp_frontiers[0] # If only one representative point, set as target directly
             else:
-                return self._explore_geometric() # 如果聚类后没点了，退回
+                return self._explore_geometric() # If no points after clustering, fall back
 
-        # 4. 后续的TSP计算逻辑（成本矩阵、求解等）保持不变，只是作用于聚类后的点
+        # 4. Subsequent TSP calculation logic (cost matrix, solving, etc.) remains unchanged, just operates on clustered points
         N = len(tsp_frontiers)
         cost_matrix = np.full((N + 1, N + 1), 1e6)
         
@@ -1413,8 +1413,8 @@ Please provide the relationship you can determine from the image.
 
         print(f"  TSP: Building cost matrix for {N+1} points...")
         for i in range(N + 1):
-            # ... (此后所有代码与你原有的版本完全相同)
-            # ... (计算cost_matrix, solve_tsp_dynamic_programming, 返回goal)
+            # ... (All subsequent code is identical to your original version)
+            # ... (Calculate cost_matrix, solve_tsp_dynamic_programming, return goal)
             start_point = points[i]
             planner.set_goal(start_point)
             fmm_dist = planner.fmm_dist
@@ -1441,7 +1441,7 @@ Please provide the relationship you can determine from the image.
             self.tsp_path_info = None
             return self._explore_geometric()
         
-        # --- (可视化和返回goal的部分也保持不变) ---
+        # --- (Visualization and goal return parts also remain unchanged) ---
         tsp_points_indices_in_high_score_list = [p - 1 for p in permutation if p > 0]
         self.tsp_path_info = {
             "frontiers": tsp_frontiers,
@@ -1458,10 +1458,10 @@ Please provide the relationship you can determine from the image.
 
     def _update_semantic_score_map(self):
         """
-        >>> 修改 (核心优化 V3) <<<
-        实现双路径VLM交互：
-        1. 如果有目标图像，则进行视觉对比打分。
-        2. 如果只有文本目标，则回退到优化的文本Prompt打分。
+        >>> Modified (Core optimization V3) <<<
+        Implement dual-path VLM interaction:
+        1. If there is a target image, perform visual comparison scoring.
+        2. If only text target, fall back to optimized text prompt scoring.
         """
         if not hasattr(self, 'image_rgb') or self.image_rgb is None or \
            self.full_map is None or self.full_map.shape[1] < 2 or \
@@ -1470,13 +1470,13 @@ Please provide the relationship you can determine from the image.
 
         rgb_image_pil = Image.fromarray(self.image_rgb)
 
-        # 1. 提出一个标准问题
+        # 1. Pose a standard question
         question = f"Based on my current view, how relevant is it for finding '{self.text_goal}'? And do you see the target?"
 
-        # 2. 调用新的、带上下文的VLM查询函数
+        # 2. Call new VLM query function with context
         vlm_result = self._query_vlm_with_context(rgb_image_pil, question)
         
-        # 3. 从结构化结果中获取语义分数
+        # 3. Extract semantic score from structured result
         current_score = vlm_result.get('semantic_score', 0.5)
         print(f"  VLM Judgement: Reason='{vlm_result.get('reason', 'N/A')}', Score={current_score:.2f}, GoalFound={self.vlm_found_goal}, Confidence={self.vlm_goal_confidence:.2f}")
 
@@ -1503,9 +1503,9 @@ Please provide the relationship you can determine from the image.
 
     def visualize_semantic_map(self):
         """
-        >>> 修改 <<<
-        将当前的语义得分图渲染成一个彩色的热力图，并与障碍物地图叠加。
-        返回一个NumPy图像数组，而不是保存到文件。
+        >>> Modified <<<
+        Render the current semantic score map as a colored heatmap and overlay it with the obstacle map.
+        Returns a NumPy image array instead of saving to file.
         """
         if self.semantic_score_map is None:
             return np.zeros((self.map_size, self.map_size, 3), dtype=np.uint8)
@@ -1516,7 +1516,7 @@ Please provide the relationship you can determine from the image.
         heatmap_color = cv2.applyColorMap(heatmap_gray, cv2.COLORMAP_JET)
         
         if self.full_map is None or self.full_map.shape[1] < 2:
-             return heatmap_color # 如果没有地图，只返回热力图
+             return heatmap_color # If no map, only return heatmap
             
         obstacle_map_np = self.full_map[0, 0].cpu().numpy()
         free_map_np = self.full_map[0, 1].cpu().numpy()
@@ -1539,23 +1539,23 @@ Please provide the relationship you can determine from the image.
             except (TypeError, ValueError):
                 pass
         
-        # 返回翻转后的图像以匹配坐标系
+        # Return flipped image to match coordinate system
         return cv2.flip(background, 0)
     
     def _create_stitched_image(self, goal_image: Image.Image, current_view_image: Image.Image, gap=10) -> Image.Image:
         """
-        将目标图像和当前视角图像横向拼接成一张图。
+        Horizontally stitch the goal image and current view image into one image.
         """
-        # 将两张图的高度统一
+        # Unify the height of both images
         height = max(goal_image.height, current_view_image.height)
         goal_image = goal_image.resize((int(goal_image.width * height / goal_image.height), height))
         current_view_image = current_view_image.resize((int(current_view_image.width * height / current_view_image.height), height))
 
-        # 创建新的画布
+        # Create new canvas
         stitched_width = goal_image.width + current_view_image.width + gap
         stitched_image = Image.new('RGB', (stitched_width, height), (255, 255, 255))
 
-        # 粘贴图像
+        # Paste images
         stitched_image.paste(goal_image, (0, 0))
         stitched_image.paste(current_view_image, (goal_image.width + gap, 0))
 
@@ -1563,47 +1563,47 @@ Please provide the relationship you can determine from the image.
 
     def _cluster_frontiers(self, frontiers, scores, radius_px, min_samples=1):
         """
-        >>> 新增辅助函数 <<<
-        使用DBSCAN对前沿点进行聚类，以减少冗余。
+        >>> New helper function <<<
+        Use DBSCAN to cluster frontier points to reduce redundancy.
 
-        参数:
-            frontiers (np.ndarray): Nx2 的前沿点坐标数组。
-            scores (np.ndarray): N 的前沿点得分数组。
-            radius_px (float): DBSCAN的聚类半径（eps），单位为像素。
-            min_samples (int): 形成一个簇所需的最少点数。
+        Parameters:
+            frontiers (np.ndarray): Nx2 array of frontier point coordinates.
+            scores (np.ndarray): N array of frontier point scores.
+            radius_px (float): DBSCAN clustering radius (eps) in pixels.
+            min_samples (int): Minimum number of points required to form a cluster.
 
-        返回:
-            (np.ndarray, np.ndarray): 聚类后代表点的坐标和分数。
+        Returns:
+            (np.ndarray, np.ndarray): Coordinates and scores of representative points after clustering.
         """
         if len(frontiers) == 0:
             return np.array([]), np.array([])
 
-        # 执行DBSCAN聚类
+        # Execute DBSCAN clustering
         db = DBSCAN(eps=radius_px, min_samples=min_samples).fit(frontiers)
         labels = db.labels_
 
-        # 为每个簇找到代表点（选择该簇中分数最高的点）
+        # Find representative points for each cluster (select the highest scoring point in that cluster)
         representative_frontiers = []
         representative_scores = []
         unique_labels = set(labels)
 
         for label in unique_labels:
             if label == -1:
-                # -1 代表噪声点，我们将每个噪声点视为一个独立的簇
+                # -1 represents noise points, we treat each noise point as an independent cluster
                 noise_indices = np.where(labels == -1)[0]
                 for idx in noise_indices:
                     representative_frontiers.append(frontiers[idx])
                     representative_scores.append(scores[idx])
                 continue
 
-            # 找到当前簇的所有点
+            # Find all points in current cluster
             cluster_indices = np.where(labels == label)[0]
             cluster_scores = scores[cluster_indices]
             
-            # 在当前簇中，找到分数最高的那个点的索引
+            # In current cluster, find the index of the point with highest score
             highest_score_in_cluster_idx = cluster_indices[np.argmax(cluster_scores)]
             
-            # 将这个最高分的点作为整个簇的代表
+            # Use this highest scoring point as representative for the entire cluster
             representative_frontiers.append(frontiers[highest_score_in_cluster_idx])
             representative_scores.append(scores[highest_score_in_cluster_idx])
 
@@ -1612,17 +1612,17 @@ Please provide the relationship you can determine from the image.
 
     def _update_vlm_context(self):
         """
-        >>> 新增 <<<
-        使用LLM将短期记忆提炼成长期摘要。
+        >>> New <<<
+        Use LLM to distill short-term memory into long-term summary.
         """
-        # 每当短期记忆满了，就触发一次摘要更新
+        # Trigger summary update whenever short-term memory is full
         if len(self.vlm_short_term_memory) == self.vlm_short_term_memory.maxlen:
             print("  VLM Context: Summarizing short-term memory...")
             
-            # 将短期记忆转换为文本
+            # Convert short-term memory to text
             history_text = "\n".join([f"Q: {item['question']}\nA: {item['answer']}" for item in self.vlm_short_term_memory])
             
-            # 创建一个用于摘要的Prompt
+            # Create a prompt for summarization
             summarization_prompt = f"""
 You are a navigation robot's memory assistant.
 Below is the robot's recent interaction history and its previous mission summary.
@@ -1636,24 +1636,24 @@ Recent History:
 
 New concise mission summary:
 """
-            # 调用LLM（非VLM）进行摘要
+            # Call LLM (not VLM) for summarization
             try:
                 new_summary = self.llm(prompt=summarization_prompt)
                 self.vlm_context_summary = new_summary.strip()
                 print(f"  VLM Context: New summary is '{self.vlm_context_summary}'")
-                # 清空短期记忆，避免信息重复摘要
+                # Clear short-term memory to avoid redundant summarization
                 self.vlm_short_term_memory.clear()
             except Exception as e:
                 print(f"  VLM Context: Failed to summarize memory due to an error: {e}")
 
     def _query_vlm_with_context(self, image_pil, question):
         """
-        >>> 新增 <<<
-        一个带有上下文和状态注入的、结构化的VLM查询函数。
+        >>> New <<<
+        A structured VLM query function with context and state injection.
         """
-        # 1. 准备智能体状态信息
+        # 1. Prepare agent state information
         current_room = "an unknown room"
-        # 找到智能体当前位置所在的房间
+        # Find the room where the agent is currently located
         if self.start:
             y, x = int(self.start[0]), int(self.start[1])
             if hasattr(self, 'room_map') and 0 <= y < self.map_size and 0 <= x < self.map_size:
@@ -1661,10 +1661,10 @@ New concise mission summary:
                 if len(room_idx_tensor) > 0:
                     room_idx = room_idx_tensor[0].item()
                     if room_idx > 0 and room_idx < len(self.rooms):
-                        current_room = self.rooms[room_idx-1] # 假设room_map中索引从1开始
+                        current_room = self.rooms[room_idx-1] # Assume room_map index starts from 1
         
-        # 简化场景图信息
-        nearby_objects = [node.caption for node in self.nodes[-5:]] # 最近看到的5个物体
+        # Simplify scene graph information
+        nearby_objects = [node.caption for node in self.nodes[-5:]] # Last 5 objects seen
         state_info = f"""
 [Agent Status]
 Current Location: I am in {current_room}.
@@ -1672,11 +1672,11 @@ Current Target: I am looking for "{self.text_goal}".
 Nearby Objects Seen: {', '.join(nearby_objects) if nearby_objects else 'None yet'}.
 """
         
-        # 2. 准备历史上下文信息
+        # 2. Prepare historical context information
         short_term_history = "\n".join([f"Previous Q: {item['question']}\nPrevious A: {item['answer']}" for item in self.vlm_short_term_memory])
 
-        # 3. 构建最终的Prompt
-        # 这是本次修改的核心，我们要求VLM进行多任务输出
+        # 3. Build final prompt
+        # This is the core of this modification, we require VLM to perform multi-task output
         final_prompt = f"""
 You are an intelligent assistant for a robot navigating a house.
 Analyze the current image based on the mission context and agent status provided.
@@ -1699,24 +1699,24 @@ Question: {question}
 Now, analyze the provided image and provide your response in the specified JSON format.
 """
 
-        # 4. 调用VLM并解析结果
+        # 4. Call VLM and parse results
         response_text = ""
         try:
             response_text = self.vlm(final_prompt, image_pil).strip()
-            # 尝试解析JSON
+            # Try to parse JSON
             parsed_json = json.loads(response_text.replace("```json", "").replace("```", "").strip())
             
-            # 5. 更新智能体状态
+            # 5. Update agent state
             self.vlm_found_goal = parsed_json.get('goal_found', False)
             self.vlm_goal_confidence = parsed_json.get('confidence', 0.0)
             
-            # 6. 更新上下文历史
+            # 6. Update context history
             self.vlm_short_term_memory.append({
                 "question": question,
                 "answer": parsed_json.get('reason', 'No reason provided.')
             })
             
-            # 7. 定期触发长期摘要更新
+            # 7. Periodically trigger long-term summary update
             self._update_vlm_context()
 
             return parsed_json
@@ -1724,13 +1724,13 @@ Now, analyze the provided image and provide your response in the specified JSON 
         except (json.JSONDecodeError, AttributeError, TypeError) as e:
             print(f"  VLM Error: Could not parse VLM's JSON response. Error: {e}")
             print(f"  VLM Raw Response: {response_text}")
-            # 返回一个默认值，防止系统崩溃
+            # Return a default value to prevent system crash
             return {
                 "reason": "VLM response was not valid JSON.",
-                "semantic_score": 0.5, # 中性分数
+                "semantic_score": 0.5, # Neutral score
                 "goal_found": False,
                 "confidence": 0.0
             }
     # ===================================================================
-    # >>> 结束新增函数 <<<
+    # >>> End of new functions <<<
     # ===================================================================

@@ -23,13 +23,13 @@ class InstanceImageGoal_Env:
             self._env = RealWorld_Env(args)
         elif args.environment == 'ai2thor':
             from .ai2thor_env import AI2Thor_Env
-            # 1. 实例化为 AI2-THOR 编写的专用环境类 注意：它也接收 dataset (ProcTHOR 数据)
+            # 1. Instantiate the dedicated environment class written for AI2-THOR. Note: it also receives the dataset (ProcTHOR data).
             self._env = AI2Thor_Env(args=args, dataset=dataset)
-            # 2. UniGoal 的 Agent 需要知道 episodes 的数量，我们在这里提供
+            # 2. UniGoal's Agent needs to know the number of episodes, which we provide here.
             if dataset:
                 self.number_of_episodes = len(dataset)
             else:
-                self.number_of_episodes = 0 # 默认
+                self.number_of_episodes = 0  # Default
 
         self.args = args
 
@@ -61,8 +61,8 @@ class InstanceImageGoal_Env:
         goal_name = self._env.current_episode.object_category
         self.goal_name = goal_name
         # TODO expand 'configs/categories.py' for ProcTHOR objects
-        # 使用 .get() 方法来安全地获取索引。
-        # 如果 goal_name 不在 name2index 中，get会返回默认值 -1，而不是引发 KeyError。
+        # Use the .get() method to safely obtain the index.
+        # If goal_name is not in name2index, get will return the default value -1 instead of raising a KeyError.
         self.gt_goal_idx = self.name2index.get(goal_name, -1)
         if self.gt_goal_idx == -1:
             print(f"Warning: Goal category '{goal_name}' not found in name2index mapping.")
