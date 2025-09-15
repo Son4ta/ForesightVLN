@@ -28,7 +28,11 @@ ForesightVLN is a universal, **zero-shot** framework for Vision-Language Navigat
 
 ```bash
 # Clone the ForesightVLN repository
+<<<<<<< HEAD
 git clone [https://github.com/anonymous.4open.science/r/ForesightVLN.git](https://github.com/anonymous.4open.science/r/ForesightVLN.git)
+=======
+git clone [https://github.com/your-username/ForesightVLN.git](https://github.com/your-username/ForesightVLN.git)
+>>>>>>> f1bc0bbb4d64ea140cad7e8d8e4b31f6c4b26abe
 cd ForesightVLN
 
 # Create and activate a Conda environment
