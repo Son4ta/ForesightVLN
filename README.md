@@ -9,8 +9,8 @@ Official PyTorch implementation for the paper **"ForesightVLN: Dynamic Adaptive 
 
 ForesightVLN is a universal, **zero-shot** framework for Vision-Language Navigation (VLN) that excels in challenging, semantically sparse environments. It intelligently balances broad, efficient exploration with precise target localization to navigate efficiently without any task-specific training. Our work builds upon the excellent foundation laid by the UniGoal project.
 
-![ForesightVLN Pipeline](assets/pipeline.png)
-
+![ForesightVLN](assets/111.jpg)
+![ForesightVLN](assets/271.png)
 ---
 
 ## 🌟 Key Features
